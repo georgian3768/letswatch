@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LetsWatch — host controls</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1c1c1c; }
+  h1 { font-size: 1.4rem; }
+  label { display: block; margin: .8rem 0 .3rem; font-weight: 600; }
+  input[type=text], textarea { width: 100%; box-sizing: border-box; padding: .5rem; font-family: ui-monospace, monospace; border: 1px solid #999; border-radius: 6px; }
+  button { margin-top: .8rem; padding: .6rem 1.2rem; border-radius: 6px; border: 1px solid #0a66c2; background: #0a66c2; color: #fff; cursor: pointer; font-weight: 600; }
+  button.ghost { background: #fff; color: #1c1c1c; border-color: #999; }
+  .box { background: #f4f4f4; border-radius: 8px; padding: .8rem 1rem; margin: 1rem 0; }
+  .box p { margin: .4rem 0; }
+  code { background: #e8e8e8; padding: .15rem .35rem; border-radius: 4px; word-break: break-all; }
+  .ok { color: #0a6; font-weight: 600; }
+  .err { color: #c00; }
+  #status { font-family: ui-monospace, monospace; }
+  small { color: #666; }
+  a.pill { display: inline-block; padding: .55rem 1rem; margin: .4rem 0; border-radius: 999px; background: #0a66c2; color: #fff; font-weight: 600; text-decoration: none; cursor: grab; user-select: none; }
+  a.pill:active { cursor: grabbing; }
+  textarea#copy-fallback { margin-top: .5rem; }
+</style>
+</head>
+<body>
+  <h1>LetsWatch host controls</h1>
+
+  <div class="box" id="keybox" style="display:none">
+    <label for="key">Admin key (from the terminal where you ran <code>node server.js</code>)</label>
+    <input type="text" id="key" autocomplete="off">
+    <button id="save-key" class="ghost">Save key</button>
+  </div>
+
+  <div id="stream-setup">
+    <label for="engine-url">Stream URL (auto-fills when the bookmarklet is running)</label>
+    <small>Play the title in <b>Stremio Web in your browser</b> (web.stremio.com, same account), then click the bookmarklet below while it plays — the detected stream appears here. Manual paste is the fallback: DevTools → Network → request to <code>127.0.0.1:11470/…</code>.</small>
+    <div style="display:flex; gap:.5rem">
+      <input type="text" id="engine-url" placeholder="e.g. /c7a24f1e…/2/Movie.1080p.mp4">
+      <button id="start">Start stream</button>
+    </div>
+    <div id="result"></div>
+    <div id="detect" style="display:none">
+      <p><b>Detected stream</b> <small>(picked up from your playing bookmarked tab)</small></p>
+      <p>B will play this URL — click to confirm:</p>
+      <p><code id="detect-path"></code></p>
+      <button id="use-detect">Use this stream</button>
+    </div>
+  </div>
+
+  <div class="box" id="share" style="display:none">
+    <p><b>Send these to B:</b></p>
+    <p>1. <b>VLC stream link:</b> <code id="share-stream"></code> <button class="ghost" data-copy="share-stream">copy</button></p>
+    <p>2. <b>Sync tab (keep open):</b> <code id="share-view"></code> <button class="ghost" data-copy="share-view">copy</button></p>
+    <p class="hint">Dashboard URL (you): <code id="share-admin"></code></p>
+  </div>
+
+  <div class="box">
+    <p><b>Sync master bookmarklet</b> <small>(keeps B in sync with your playback)</small></p>
+    <p><small>In the <b>Stremio Web tab</b> (browser, not the desktop app), click it while the title plays. It auto-syncs B and detects the stream URL.<br>
+    <b>How to bookmark it:</b> drag the pill below onto your bookmarks bar (or right-click it → <i>Add link to bookmarks</i>), then click that bookmark in the Stremio tab.</small></p>
+    <p><a id="bookmarklet-link" class="pill" draggable="true" href="javascript:void(0)">Sync master — drag me to your bookmarks bar</a></p>
+    <p><small>Fallback: <button id="copy-bookmarklet" class="ghost">Copy bookmarklet code</button></small></p>
+    <p id="status" class="err"></p>
+  </div>
+
+  <script>
+  const fmt = (s) => s.replace(/^https?:\/\//, '');
+
+  let token = localStorage.getItem('lw.adminKey');
+  if (token) startStreamUi(); else document.getElementById('keybox').style.display = 'block';
+
+  function startStreamUi() {
+    document.getElementById('stream-setup').style.display = 'block';
+    document.querySelector('#keybox').style.display = 'none';
+  }
+
+  document.getElementById('save-key').onclick = () => {
+    token = document.getElementById('key').value.trim();
+    localStorage.setItem('lw.adminKey', token);
+    snippet = buildSnippet();
+    bmLink.href = snippet;
+    startStreamUi();
+  };
+
+  function authHeaders() {
+    return { 'content-type': 'application/json', authorization: `Bearer ${token}` };
+  }
+
+  async function startStream(url) {
+    const res = await fetch('/api/session', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ streamUrl: url }),
+    });
+    if (res.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+    }
+    const data = await res.json().catch(() => ({}));
+    const result = document.getElementById('result');
+    result.replaceChildren();
+    const line = document.createElement('p');
+    if (!data.ok) {
+      line.className = 'err';
+      line.textContent = data.error || 'failed';
+      result.append(line);
+      return;
+    }
+    line.className = 'ok';
+    line.textContent = `stream ready: ${data.streamPath}`;
+    result.append(line);
+    const origin = location.origin;
+    const shareStream = document.getElementById('share-stream');
+    const shareView = document.getElementById('share-view');
+    const shareAdmin = document.getElementById('share-admin');
+    shareStream.textContent = `${fmt(origin)}/stream`;
+    shareStream.dataset.url = `${origin}/stream`;
+    shareView.textContent = `${fmt(origin)}/view`;
+    shareView.dataset.url = `${origin}/view`;
+    shareAdmin.textContent = `${fmt(origin)}/admin`;
+    document.getElementById('share').style.display = 'block';
+  }
+
+  document.getElementById('start').onclick = () => {
+    const raw = document.getElementById('engine-url').value.trim();
+    const url = raw.startsWith('http') ? raw : `http://127.0.0.1:11470${raw.startsWith('/') ? raw : '/' + raw}`;
+    startStream(url);
+  };
+
+  document.getElementById('use-detect').onclick = () => {
+    const path = document.getElementById('use-detect').dataset.path || '';
+    if (path) startStream(`http://127.0.0.1:11470${path}`);
+    document.getElementById('detect').style.display = 'none';
+  };
+
+  const status = document.getElementById('status');
+  const statusOk = (msg) => { status.textContent = msg; status.classList.remove('err'); };
+  const statusFail = (msg) => { status.textContent = msg; status.classList.add('err'); };
+
+  function copyFallback(text, label) {
+    let ta = document.getElementById('copy-fallback');
+    if (!ta) {
+      ta = document.createElement('textarea');
+      ta.id = 'copy-fallback';
+      ta.setAttribute('readonly', '');
+      ta.rows = 6;
+      document.getElementById('status').after(ta);
+      ta.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === 'Escape') {
+          ta.style.display = 'none';
+          status.textContent = '';
+          status.classList.remove('err');
+        }
+      });
+    }
+    ta.value = text;
+    ta.style.display = 'block';
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    try {
+      if (document.execCommand('copy')) {
+        statusOk(`${label} copied to clipboard`);
+        ta.style.display = 'none';
+        return;
+      }
+    } catch (e) {}
+    statusFail(`${label}: the browser blocked automatic copy — press Ctrl+C now to copy the text below, then press Enter.`);
+  }
+
+  function copyText(text, label) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(
+        () => statusOk(`${label} copied to clipboard`),
+        () => copyFallback(text, label)
+      );
+    }
+    copyFallback(text, label);
+  }
+
+  function buildSnippet() {
+    const key = JSON.stringify(token || '');
+    return 'javascript:(function(){var H="' +
+      (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host +
+      '/ws";var K=' + key + ';' + [
+      'if(window.__lwmaster)return;window.__lwmaster=1;',
+      'var ws=new WebSocket(H);',
+      'function findVid(){var v=document.querySelector("video");if(v)return v;var el=document.querySelector("video-js");return el?el.querySelector("video"):null;}',
+      'function wire(v){if(!v||v.__lw)return;v.__lw=1;["play","pause","seeked","timeupdate"].forEach(function(ev){v.addEventListener(ev,send,true);});send();}',
+      'function send(){var v=findVid();if(!v)return;if(ws.readyState===1){ws.send(JSON.stringify({role:"master",key:K,playing:!v.paused&&!v.ended,t:v.currentTime||0,u:v.currentSrc,ts:Date.now()}));}}',
+      'ws.onopen=function(){wire(findVid());new MutationObserver(function(){wire(findVid());}).observe(document.body,{childList:true,subtree:true});};'
+    ].join('') + '})()';
+  }
+
+  let snippet = buildSnippet();
+  const bmLink = document.getElementById('bookmarklet-link');
+  bmLink.href = snippet;
+  bmLink.onclick = (e) => {
+    e.preventDefault();
+    statusFail('This link only works as a bookmark — drag it onto your bookmarks bar (or right-click → Add link to bookmarks), then open the bookmark in the Stremio tab.');
+  };
+  document.getElementById('copy-bookmarklet').onclick = () => copyText(buildSnippet(), 'Bookmarklet code');
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    const el = document.getElementById(btn.dataset.copy);
+    const url = el.dataset.url || `${location.origin}${el.textContent.replace(/^.*?(?=\/(stream|view|admin)\b)/, '')}`;
+    copyText(url, 'Link');
+  });
+
+  (() => {
+    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    ws.onopen = () => ws.send(JSON.stringify({ kind: 'admin' }));
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.kind === 'status') {
+        document.getElementById('status').textContent = `${m.viewers} viewer(s) connected`;
+        document.getElementById('status').classList.remove('err');
+      } else if (m.role === 'master' && m.u) {
+        let p;
+        try {
+          const u = new URL(m.u, 'http://127.0.0.1:11470');
+          p = u.pathname + u.search;
+        } catch { p = m.u; }
+        if (p && !p.startsWith('/')) p = '/' + p;
+        document.getElementById('detect-path').textContent = p;
+        document.getElementById('use-detect').dataset.path = p;
+        document.getElementById('detect').style.display = 'block';
+      }
+    };
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LetsWatch — B's screen</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1c1c1c; }
+  h1 { font-size: 1.4rem; }
+  .row { display: flex; gap: .5rem; margin: 1rem 0; }
+  button { padding: .5rem 1rem; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; }
+  button.active { background: #0a66c2; color: #fff; border-color: #0a66c2; }
+  #status { font-family: ui-monospace, monospace; background: #f4f4f4; padding: .4rem .6rem; border-radius: 6px; min-height: 1.6rem; }
+  video { width: 100%; background: #000; border-radius: 8px; }
+  .hint { font-size: .9rem; color: #555; border-left: 3px solid #ccc; padding-left: .8rem; }
+  .hidden { display: none; }
+  body.mode-vlc #video-wrap { display: none; }
+  body:not(.mode-vlc) #vlc-msg { display: none; }
+</style>
+</head>
+<body>
+  <h1>LetsWatch viewer</h1>
+  <p class="hint">This tab syncs playback with the host. It works two ways:</p>
+
+  <div class="row">
+    <button id="btn-inline">Watch in browser</button>
+    <button id="btn-vlc">Watch in my VLC</button>
+  </div>
+
+  <div class="row" style="flex-direction:column">
+    <div id="video-wrap">
+      <video id="video" src="/stream" controls autoplay playsinline></video>
+    </div>
+    <p id="vlc-msg" class="hint">
+      VLC mode: share URL opens <b>/stream</b> in VLC → Media → Open Network Stream.<br>
+      This tab stays open to drive VLC automatically.
+    </p>
+    <p id="vlc-config" class="hidden"></p>
+    <div id="status">connecting…</div>
+  </div>
+
+  <p class="hint">
+    First time in VLC mode: Tools → Preferences → Show All → Interface → Main interfaces →
+    tick <b>Web</b> (localhost, no password), then press <b>Watch in my VLC</b> again.
+  </p>
+
+  <script src="/sync.js"></script>
+</body>
+</html>

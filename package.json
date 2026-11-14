@@ -1,0 +1,26 @@
+{
+  "name": "letswatch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stream Stremio playback to a friend's VLC with live play/pause/seek sync",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "tunnel": "bash tunnel.sh",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/georgian3768/letswatch.git"
+  },
+  "author": "georgian3768",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  }
+}
