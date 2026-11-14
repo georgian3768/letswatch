@@ -19,6 +19,11 @@ Host browser (web.stremio.com)
 The host shares two links: a `/stream` URL for VLC and a `/view` page that stays open and
 keeps the viewer in sync.
 
+<img src="docs/admin.png" alt="LetsWatch host controls after a stream is ready" width="780">
+
+*The host controls: start a stream, copy the two viewer links, and generate the sync
+bookmarklet.*
+
 > **Status:** personal-use tool, not a production streaming service. Read the
 > [security model](#security-model) before exposing it through a tunnel.
 
